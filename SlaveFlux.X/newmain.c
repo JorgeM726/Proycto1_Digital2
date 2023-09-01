@@ -15,10 +15,10 @@
 #pragma config WRT = OFF        // Flash Program Memory Self Write Enable bits (Write protection off)
 
 // #pragma config statements should precede project file includes.
-// Use project enums instead of #define for ON and OFF.
+
 
 //*****************************************************************************
-// Definici髇 e importaci髇 de librer韆s
+// Definici贸n e importaci贸n de librer铆as
 //*****************************************************************************
 #include <stdint.h>
 #include <pic16f887.h>
@@ -26,25 +26,25 @@
 #include "LCD.h"
 #include <xc.h>
 //*****************************************************************************
-// Definici髇 de variables
+// Definici贸n de variables
 //*****************************************************************************
 #define _XTAL_FREQ 8000000
 
 
-uint8_t z;
-uint8_t valor =0;
-uint8_t sendValue=0;
+uint8_t z; //Utilizado para almacenar buffer de spi
+uint8_t valor =0; //almacena datos enviados por maestro
+uint8_t sendValue=0; //valor a enviaar a maestro
 unsigned int pulsos = 0;   
 
 //*****************************************************************************
-// Definici髇 de funciones para que se puedan colocar despu閟 del main de lo 
+// Definici贸n de funciones para que se puedan colocar despu茅s del main de lo 
 // contrario hay que colocarlos todas las funciones antes del main
 //*****************************************************************************
 void setup(void);
 
 
 //*****************************************************************************
-// C骴igo de Interrupci髇 
+// C贸digo de Interrupci贸n 
 //*****************************************************************************
 void __interrupt() isr(void){
    if(PIR1bits.SSPIF == 1){ 
@@ -52,26 +52,26 @@ void __interrupt() isr(void){
         SSPCONbits.CKP = 0;
        
         if ((SSPCONbits.SSPOV) || (SSPCONbits.WCOL)){
-            z = SSPBUF;                 // Read the previous value to clear the buffer
-            SSPCONbits.SSPOV = 0;       // Clear the overflow flag
-            SSPCONbits.WCOL = 0;        // Clear the collision bit
-            SSPCONbits.CKP = 1;         // Enables SCL (Clock)
+            z = SSPBUF;                 // Leer dato anterior para limpiar buffer
+            SSPCONbits.SSPOV = 0;       // limpiar overflow
+            SSPCONbits.WCOL = 0;        // limpiar bit de colisi贸n
+            SSPCONbits.CKP = 1;         // permitir reloj
         }
 
         if(!SSPSTATbits.D_nA && !SSPSTATbits.R_nW) {
             //__delay_us(7);
             z = SSPBUF;                 // Lectura del SSBUF para limpiar el buffer y la bandera BF
             //__delay_us(2);
-            PIR1bits.SSPIF = 0;         // Limpia bandera de interrupci髇 recepci髇/transmisi髇 SSP
+            PIR1bits.SSPIF = 0;         // Limpia bandera de interrupci贸n recepci贸n/transmisi贸n SSP
             SSPCONbits.CKP = 1;         // Habilita entrada de pulsos de reloj SCL
-            while(!SSPSTATbits.BF);     // Esperar a que la recepci髇 se complete
-            valor = SSPBUF;             // Guardar en el PORTD el valor del buffer de recepci髇
+            while(!SSPSTATbits.BF);     // Esperar a que la recepci贸n se complete
+            valor = SSPBUF;             // Guardar en el PORTD el valor del buffer de recepci贸n
             __delay_us(250);
             
         }else if(!SSPSTATbits.D_nA && SSPSTATbits.R_nW){
             z = SSPBUF;
             BF = 0;
-            SSPBUF = sendValue;
+            SSPBUF = sendValue; //Enviar dato a maestro
             SSPCONbits.CKP = 1;
             __delay_us(250);
             while(SSPSTATbits.BF);
@@ -80,6 +80,7 @@ void __interrupt() isr(void){
         PIR1bits.SSPIF = 0;     
     }
    
+   //Cuando est茅n activadas las interrupciones del puerto B, aumentar contador para conocer el n煤mero de pulsos
    if (INTCONbits.RBIF){
         
         if (PORTBbits.RB0==0){ 
@@ -103,21 +104,21 @@ void main(void) {
     //*************************************************************************
     while(1){
        
-        
+            //Activar interrupciones en puerto B durante un segundo 
             INTCONbits.RBIE=1;
             __delay_ms(1000);
             INTCONbits.RBIE=0;
             
-        
+        //Almacenar el n煤mero de pulsos en valor de env铆o
         sendValue = pulsos;
-        
+        //Reiniciar contador de pulsos para siguiente iteraci贸n
         pulsos = 0;
   }
     
     return;
 }
 //*****************************************************************************
-// Funci髇 de Inicializaci髇
+// Funci贸n de Inicializaci贸n
 //*****************************************************************************
 void setup(void){
     ANSEL = 0; 
@@ -143,5 +144,5 @@ void setup(void){
     
   
     
-    I2C_Slave_Init(0x50);   
+    I2C_Slave_Init(0x50);   //Iniciar esclavo en la direcci贸n 50
 }
