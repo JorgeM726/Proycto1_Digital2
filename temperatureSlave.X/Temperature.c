@@ -14,11 +14,9 @@
 #pragma config BOR4V = BOR40V   // Brown-out Reset Selection bit (Brown-out Reset set to 4.0V)
 #pragma config WRT = OFF        // Flash Program Memory Self Write Enable bits (Write protection off)
 
-// #pragma config statements should precede project file includes.
-// Use project enums instead of #define for ON and OFF.
 
 //*****************************************************************************
-// Definici髇 e importaci髇 de librer韆s
+// Definici贸n e importaci贸n de librer铆as
 //*****************************************************************************
 #include <stdint.h>
 #include <pic16f887.h>
@@ -26,97 +24,102 @@
 #include "LCD.h"
 #include <xc.h>
 //*****************************************************************************
-// Definici髇 de variables
+// Definici贸n de variables
 //*****************************************************************************
 #define _XTAL_FREQ 8000000
 #define DHT11_PIN      RB0
 #define DHT11_PIN_DIR  TRISB0
 
-uint8_t selector=0;
-uint8_t z;
-uint8_t useless;
-uint8_t sendData =0;
-uint8_t highByte;
+uint8_t selector=0; //Indica qu茅 dato se enviar谩 al maestro
+uint8_t z; //Utilizado para almacenar buffer de spi
+uint8_t useless; //almacena datos enviados por maestro
+uint8_t sendData =0; //dato a enviar a maestro
+uint8_t highByte; //La temperatura se recibe en porciones de 4 bits, por lo que se usan variables para unirlos
 uint8_t lowByte;
 uint8_t joinedTemp;
-uint8_t highByteH;
+uint8_t highByteH; //La humedad tambi茅n se recibe como bits separados,por lo que se usa variables para unirlos
 uint8_t lowByteH;
 uint8_t joinedHum;
         
 
 //*****************************************************************************
-// Definici髇 de funciones para que se puedan colocar despu閟 del main de lo 
+// Definici贸n de funciones para que se puedan colocar despu茅s del main de lo 
 // contrario hay que colocarlos todas las funciones antes del main
 //*****************************************************************************
 void setup(void);
 short Time_out = 0;
 unsigned char T_Byte1, T_Byte2, RH_Byte1, RH_Byte2, CheckSum ;
 
+//Funci贸n para iniciar la comunicaci贸n coon el DTH11
 void Start_Signal(void) {
-  DHT11_PIN_DIR = 0;     // configure DHT11_PIN as output
-  DHT11_PIN = 0;         // clear DHT11_PIN output (logic 0)
+  DHT11_PIN_DIR = 0;     // definir el pin del sensor como input
+  DHT11_PIN = 0;         // limpiar el valor del pin
 
-  __delay_ms(25);        // wait 25 ms
-  DHT11_PIN = 1;         // set DHT11_PIN output (logic 1)
+  __delay_ms(25);        //Esperar a que se iniciela se帽al
+  DHT11_PIN = 1;         // enviar se帽al al sensor
 
-  __delay_us(30);        // wait 30 us
-  DHT11_PIN_DIR = 1;     // configure DHT11_PIN as input
+  __delay_us(30);        //esperar 30 us
+  DHT11_PIN_DIR = 1;     // configurar el pin como input
 }
+
+//Revisar la respuesta
 __bit Check_Response() {
-  TMR1H = 0;                 // reset Timer1
+  TMR1H = 0;                 // resetear Timer1
   TMR1L = 0;
-  TMR1ON = 1;                // enable Timer1 module
+  TMR1ON = 1;                // activar Timer1 
 
-  while(!DHT11_PIN && TMR1L < 100);  // wait until DHT11_PIN becomes high (checking of 80祍 low time response)
+  while(!DHT11_PIN && TMR1L < 100);  // Esperar a HIGH del pin del sensor (revisar respuesta baja de 80us)
 
-  if(TMR1L > 99)                     // if response time > 99礢  ==> Response error
-    return 0;                        // return 0 (Device has a problem with response)
+  if(TMR1L > 99)                     // si response time > 99碌S  ==> Response error
+    return 0;                        // return 0 (el dispositivo tuvo problema de respuesta)
 
   else
   {
-    TMR1H = 0;               // reset Timer1
+    TMR1H = 0;               // resetear Timer1
     TMR1L = 0;
 
-    while(DHT11_PIN && TMR1L < 100); // wait until DHT11_PIN becomes low (checking of 80祍 high time response)
+    while(DHT11_PIN && TMR1L < 100); // Esperar a LOW del pin del sensor (revisar respuesta alta de 80us)
 
-    if(TMR1L > 99)                   // if response time > 99礢  ==> Response error
-      return 0;                      // return 0 (Device has a problem with response)
+    if(TMR1L > 99)                   //  si response time > 99碌S  ==> Response error
+      return 0;                      //return 0 (el dispositivo tuvo problema de respuesta)
 
     else
-      return 1;                      // return 1 (response OK)
+      return 1;                      // return 1 (el dispositivo envi贸 la respuesta)
   }
 }
+
+//leer datos
 __bit Read_Data(unsigned char* dht_data)
 {
   *dht_data = 0;
 
   for(char i = 0; i < 8; i++)
   {
-    TMR1H = 0;             // reset Timer1
+    TMR1H = 0;             // resetear Timer1
     TMR1L = 0;
 
-    while(!DHT11_PIN)      // wait until DHT11_PIN becomes high
-      if(TMR1L > 100) {    // if low time > 100  ==>  Time out error (Normally it takes 50祍)
+    while(!DHT11_PIN)      // Esperar a dato de DHT11_PIN 
+      if(TMR1L > 100) {    // SI hay time out error(Generalmente toma 50碌s)
         return 1;
       }
 
-    TMR1H = 0;             // reset Timer1
+    TMR1H = 0;             // resetear Timer1
     TMR1L = 0;
 
-    while(DHT11_PIN)       // wait until DHT11_PIN becomes low
-      if(TMR1L > 100) {    // if high time > 100  ==>  Time out error (Normally it takes 26-28祍 for 0 and 70祍 for 1)
+    while(DHT11_PIN)       // esperar a que se apague el DHT11_PIN 
+      if(TMR1L > 100) {    // SI hay time out error ((Generalmente toma 26-28碌s paara 0 y 70碌s para 1)
         return 1;          // return 1 (timeout error)
       }
 
-     if(TMR1L > 50)                  // if high time > 50  ==>  Sensor sent 1
+     if(TMR1L > 50)                  // si high time > 50  ==>  Sensor sent 1
        *dht_data |= (1 << (7 - i));  // set bit (7 - i)
   }
 
-  return 0;                          // return 0 (data read OK)
+  return 0;                          // (Lectura correcta de datos)
 }
 
 //*****************************************************************************
-// C骴igo de Interrupci髇 
+// C贸digo de Interrupci贸n 
 //*****************************************************************************
 void __interrupt() isr(void){
    if(PIR1bits.SSPIF == 1){ 
@@ -124,31 +127,31 @@ void __interrupt() isr(void){
         SSPCONbits.CKP = 0;
        
         if ((SSPCONbits.SSPOV) || (SSPCONbits.WCOL)){
-            z = SSPBUF;                 // Read the previous value to clear the buffer
-            SSPCONbits.SSPOV = 0;       // Clear the overflow flag
-            SSPCONbits.WCOL = 0;        // Clear the collision bit
-            SSPCONbits.CKP = 1;         // Enables SCL (Clock)
+            z = SSPBUF;                 // Leer dato anterior para limpiar buffer
+            SSPCONbits.SSPOV = 0;       // limpiar overflow
+            SSPCONbits.WCOL = 0;        // limpiar bit de colisi贸n
+            SSPCONbits.CKP = 1;         // permitir reloj
         }
 
         if(!SSPSTATbits.D_nA && !SSPSTATbits.R_nW) {
             //__delay_us(7);
             z = SSPBUF;                 // Lectura del SSBUF para limpiar el buffer y la bandera BF
             //__delay_us(2);
-            PIR1bits.SSPIF = 0;         // Limpia bandera de interrupci髇 recepci髇/transmisi髇 SSP
+            PIR1bits.SSPIF = 0;         // Limpia bandera de interrupci贸n recepci贸n/transmisi贸n SSP
             SSPCONbits.CKP = 1;         // Habilita entrada de pulsos de reloj SCL
-            while(!SSPSTATbits.BF);     // Esperar a que la recepci髇 se complete
-            useless = SSPBUF;             // Guardar en el PORTD el valor del buffer de recepci髇
+            while(!SSPSTATbits.BF);     // Esperar a que la recepci贸n se complete
+            useless = SSPBUF;             // Guardar en useless el valor del buffer de recepci贸n
             __delay_us(250);
             
         }else if(!SSPSTATbits.D_nA && SSPSTATbits.R_nW){
             z = SSPBUF;
             BF = 0;
-            selector ++;
-             if (selector %2 == 0){
-                sendData = joinedTemp;
+            selector ++;     //incrementar selector 
+             if (selector %2 == 0){ //revisar si selector es par o impar para alternar los datos que se env铆an al maestro
+                sendData = joinedTemp; //si es par, enviar temperatura
             }else if (selector % 2 != 0){
-                sendData = joinedHum;
-            }
+                sendData = joinedHum;  //si es impar, enviar humedad
+            } 
         
             SSPBUF = sendData;
             
@@ -173,32 +176,32 @@ void main(void) {
     while(1){
        
          Start_Signal(); 
-      if(Check_Response())    // check if there is a response from sensor (If OK start reading humidity and temperature data)
+      if(Check_Response())    // Revisar si hay respuesta del sensor (Si s铆, leer humdad y temperatura)
     {
-      // read (and save) data from the DHT11 sensor and check time out errors
+      // Leer y guardar datos y revisar errores de time out
       if(Read_Data(&RH_Byte1) || Read_Data(&RH_Byte2) || Read_Data(&T_Byte1) || Read_Data(&T_Byte2) || Read_Data(&CheckSum))
       {
         joinedTemp = 0;
         joinedHum = 0;
       }
 
-      else         // if there is no time out error
+      else         // Si no hay error de time out
       {
         if(CheckSum == ((RH_Byte1 + RH_Byte2 + T_Byte1 + T_Byte2) & 0xFF))
-        {                                       // if there is no checksum error
+        {                                       // Y no hay error de checksum
           
-          highByte = T_Byte1 / 10  + '0';;
+          highByte = T_Byte1 / 10  + '0';; //descomponer valores y unirlos para guardado
           lowByte = T_Byte1 % 10  + '0';
           joinedTemp = (highByte - '0') * 10 + (lowByte - '0');
           
          
-          highByteH = RH_Byte1 / 10 + '0';
+          highByteH = RH_Byte1 / 10 + '0'; //descomponer valores y unirlos para guardado
           lowByteH = RH_Byte1 % 10 + '0';
           joinedHum = (highByteH - '0') * 10 + (lowByteH - '0');
          
         }
 
-        // if there is a checksum error
+        // si hay error de checksum
         else
         {
          joinedTemp = 0;
@@ -208,22 +211,22 @@ void main(void) {
       }
     }
 
-    // if there is a response (from the sensor) problem
+    // Si hay problema en la respuesta del sensor
     else
     {
       joinedTemp = 0;
         joinedHum = 0;
     }
 
-    TMR1ON = 0;        // disable Timer1 module
-    __delay_ms(1000);  // wait 1 second
+    TMR1ON = 0;        // apagar timer1
+    __delay_ms(1000);  // 
 
   }
     
     return;
 }
 //*****************************************************************************
-// Funci髇 de Inicializaci髇
+// Funci贸n de Inicializaci贸n
 //*****************************************************************************
 void setup(void){
     ANSEL = 0; 
@@ -235,8 +238,8 @@ void setup(void){
     OSCCONbits.IRCF1 = 1;
     OSCCONbits.IRCF0 = 1; // 8MHZ
     OSCCONbits.SCS = 1;  
-    T1CON  = 0x10;        // set Timer1 clock source to internal with 1:2 prescaler (Timer1 clock = 1MHz)
-    TMR1H  = 0;           // reset Timer1
+    T1CON  = 0x10;        // Timer1 con interna con prescaler  de 1:2 
+    TMR1H  = 0;           // resetear Timer1
     TMR1L  = 0;
     
     TRISB = 0;
@@ -245,5 +248,5 @@ void setup(void){
     PORTB = 0;
     
     
-    I2C_Slave_Init(0x80);   
+    I2C_Slave_Init(0x80);   //Iniciar esclavo en la direcci贸n 80
 }
